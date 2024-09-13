@@ -2,10 +2,6 @@ import os
 import pandas as pd
 import xarray as xr
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import cartopy
-import cartopy.crs as ccrs
 import datetime as dt
 import dask
 import dask.distributed as dd

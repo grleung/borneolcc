@@ -2,10 +2,6 @@ import os
 import pandas as pd
 import xarray as xr
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import cartopy
-import cartopy.crs as ccrs
 import datetime as dt
 import dask
 import dask.distributed as dd
@@ -54,6 +50,7 @@ coord = xr.open_dataset(
 coord["lc"] = (coord.LEAF_CLASS * coord.PATCH_AREA).sum(dim=("p"))
 landmask = coord.lc != 0
 
+
 def rename_dims(ds, dims=rams_dims_lite):
     return ds.rename_dims(dict([(d, dims.get(d)) for d in ds.dims]))
 
@@ -82,7 +79,6 @@ variables = [
 ]
 
 drop_var = [v for v in lite_var if v not in variables]
-]
 
 # dask seems to work better when you break up into shorter time intervals (i.e., number of files it needs to open)
 # I think this is mainly just to prevent running into memory limits
