@@ -20,13 +20,13 @@ yellow = prism[5]
 gray = "#303039"
 
 # importing plotting parameters
-style = "/home/gleung/scripts/styles/bee-paperlight.mplstyle"
-bg = "white"
-lcol = "black"
+# style = "/home/gleung/scripts/styles/bee-paperlight.mplstyle"
+# bg = "white"
+# lcol = "black"
 
-'''style = "/home/gleung/scripts/styles/bee-presentationtransparent.mplstyle"
+style = "/home/gleung/scripts/styles/bee-presentationtransparent.mplstyle"
 bg = "#2E3745"
-lcol = "white"'''
+lcol = "white"
 plt.style.use(style)
 
 cloud = mcolors.ListedColormap(Ice_20.mpl_colors[4:])

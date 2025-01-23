@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import h5py
 import xarray as xr
+import tobac
 
 # physical constants
 g = 9.8065
@@ -11,7 +12,6 @@ rd = 287
 p00 = 100000
 rgas = 287
 lv = 2.5e6
-
 
 nx = 2750  # number x pts
 dx = 150  # grid spacing
@@ -28,6 +28,7 @@ rams_dims_lite = {
     "phony_dim_3": "z",
     "phony_dim_1": "y",
     "phony_dim_2": "x",
+    "phony_dim_4": "g",
 }
 
 rams_dims_anal = {
@@ -38,44 +39,6 @@ rams_dims_anal = {
     "phony_dim_4": "s",  # surf water
     "phony_dim_5": "g",  # soil levels
 }
-
-
-def get_rams_output(
-    path,
-    variables,
-    dims=rams_dims_lite,
-):
-
-    drop_var = [v for v in all_var if v not in variables]
-
-    ds = xr.open_dataset(
-        path,
-        phony_dims="access",
-        engine="h5netcdf",
-        chunks="auto",
-        drop_variables=drop_var,
-    )
-
-    ds = rename_dims(ds, dims)
-
-    if len(variables) == 1:
-        ds = ds[variables[0]]
-
-    return ds
-
-
-def rename_dims(ds, dims=rams_dims_lite):
-    return ds.rename_dims(dict([(d, dims.get(d)) for d in ds.dims]))
-
-
-def read_rams_file(p, in_vars, dims):
-    ds = xr.open_dataset(
-        p, phony_dims="access", engine="h5netcdf", chunks="auto"
-    )[in_vars]
-
-    ds = ds.rename_dims(dict([(d, dims.get(d)) for d in ds.dims]))
-
-    return ds
 
 
 def read_header(dataPath, p, nz, var="__ztn01", varname="z"):
@@ -122,6 +85,70 @@ dz = 1 / read_header(
 )
 
 
+def get_rams_output(path, variables, dims=rams_dims_lite, prep_tobac=False):
+
+    if prep_tobac:
+        drop_var = [
+            v for v in lite_var if v not in variables + ["GLAT", "GLON"]
+        ]
+    else:
+        drop_var = [v for v in lite_var if v not in variables]
+
+    ds = xr.open_dataset(
+        path,
+        phony_dims="access",
+        engine="h5netcdf",
+        chunks="auto",
+        drop_variables=drop_var,
+    )
+
+    ds = rename_dims(ds, dims)
+
+    if prep_tobac:
+        ds = ds.unify_chunks()
+        ds = assign_coords(ds)
+        ds = ds.assign_coords(ztn=("z", alt))
+
+    if len(variables) == 1:
+        ds = ds[variables[0]]
+
+    return ds
+
+
+def rename_dims(ds, dims=rams_dims_lite):
+    return ds.rename_dims(dict([(d, dims.get(d)) for d in ds.dims]))
+
+
+def read_rams_file(p, in_vars, dims):
+    ds = xr.open_dataset(
+        p, phony_dims="access", engine="h5netcdf", chunks="auto"
+    )[in_vars]
+
+    ds = ds.rename_dims(dict([(d, dims.get(d)) for d in ds.dims]))
+
+    return ds
+
+
+def assign_coords(ds):
+
+    if "z" in ds.dims:
+        c = {
+            "x": ds.x,
+            "y": ds.y,
+            "z": ds.z,
+            "lat": (["y", "x"], np.array(ds.GLAT)),
+            "lon": (["y", "x"], np.array(ds.GLON)),
+        }
+    else:
+        c = {
+            "x": ds.x,
+            "y": ds.y,
+            "lat": (["y", "x"], np.array(ds.GLAT)),
+            "lon": (["y", "x"], np.array(ds.GLON)),
+        }
+    return ds.assign_coords(c)
+
+
 def assign_topt(ds):
     # topography height 2d
     # reads topography height
@@ -146,6 +173,52 @@ def assign_dz(ds):
     # altitudes of sigma-z levels in 3d
     ds = ds.assign(dz=(("z", dz)))
     return ds
+
+
+def compute_cond(ds, return_dens=False, cloud=True):
+    ds = ds.assign(PRES=p00 * (ds.PI / cp) ** (cp / rd))
+    ds = ds.assign(TEMP=ds.THETA * (ds.PI / cp))
+    ds = ds.assign(DENS=ds.PRES / (rd * ds.TEMP * (1 + (0.61 * ds.RV))))
+
+    if cloud:
+        ds = ds.assign(COND=(ds.RCP + ds.RSP + ds.RPP) * ds.DENS)
+    else:
+        ds = ds.assign(COND=(ds.RTP - ds.RV) * ds.DENS)
+
+    if return_dens:
+        ds = ds[["COND", "DENS"]]
+    else:
+        ds = ds["COND"]
+    return ds
+
+
+def compute_pcp(ds):
+    ds = ds.assign(
+        PCPT=(
+            ds.PCPRR
+            + ds.PCPRP
+            + ds.PCPRS
+            + ds.PCPRA
+            + ds.PCPRG
+            + ds.PCPRH
+            + ds.PCPRD
+        )
+        * 3600
+    )
+
+    ds = ds["PCPT"]
+    return ds
+
+
+def combine_tobac_list(features_list):
+    # takes a list of tobac output dataframes and combines them into one dataframe
+    return tobac.utils.combine_feature_dataframes(features_list)
+
+
+def save_files(out, savePath):
+    out["time"] = pd.to_datetime(out["timestr"])
+    # save dataframe as a parquet in savePath
+    out.to_parquet(savePath, engine="pyarrow")
 
 
 lite_var = [
