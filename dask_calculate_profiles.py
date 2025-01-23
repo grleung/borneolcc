@@ -7,7 +7,8 @@ import dask
 import dask.distributed as dd
 import glob
 
-client = dd.Client("tcp://10.1.20.22:8786")
+client = dd.Client("snowfall1:8786")
+
 client.upload_file("shared_model_params.py")
 from shared_model_params import (
     get_rams_output,
@@ -24,17 +25,16 @@ from shared_model_params import (
 )
 
 lcver = "lc1960"
-rver = "har"
+rver = "rte"
 
 dataPath = f"/squall/gleung/borneolcc/{lcver}/{rver}/"
 grid = "g1"
-figPath = f"/squall/gleung/borneolcc-figures/{lcver}/{rver}/quicklook/"
 
-if not os.path.isdir(figPath):
-    os.mkdir(figPath)
-
-all_paths = [p for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))]
+all_paths = [p for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))][
+    ((24 * 4) + 6) * 12 :
+]
 print(len(all_paths))
+print(all_paths[0], all_paths[-1])
 
 # these 2d things are fixed in time
 coord = xr.open_dataset(
@@ -49,6 +49,8 @@ coord = xr.open_dataset(
 
 coord["lc"] = (coord.LEAF_CLASS * coord.PATCH_AREA).sum(dim=("p"))
 landmask = coord.lc != 0
+
+landmask = landmask.sel(x=slice(50, 2100), y=slice(50, 2180))
 
 
 def rename_dims(ds, dims=rams_dims_lite):
@@ -76,6 +78,7 @@ variables = [
     "RAP",
     "RGP",
     "RHP",
+    "WP",
 ]
 
 drop_var = [v for v in lite_var if v not in variables]
@@ -84,15 +87,24 @@ drop_var = [v for v in lite_var if v not in variables]
 # I think this is mainly just to prevent running into memory limits
 # here I am splitting up my full list of times into groups of 24 (which for my 5 min output means 5 hrs at a time)
 for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 24)):
+    i = i + 53
+    print(i)
     times = [pd.to_datetime(p.split("/")[-1][4:-6]) for p in paths]
 
     # defining some save paths
     saveallPath = f"/squall/gleung/borneolcc-analysis/radprof/radprof_all_{lcver}_{rver}_{str(i).zfill(2)}.nc"
+    saveclrcolPath = f"/squall/gleung/borneolcc-analysis/radprof/radprof_clrcol_{lcver}_{rver}_{str(i).zfill(2)}.nc"
+    savecldcolPath = f"/squall/gleung/borneolcc-analysis/radprof/radprof_cldcol_{lcver}_{rver}_{str(i).zfill(2)}.nc"
     saveclrPath = f"/squall/gleung/borneolcc-analysis/radprof/radprof_clr_{lcver}_{rver}_{str(i).zfill(2)}.nc"
     savecldPath = f"/squall/gleung/borneolcc-analysis/radprof/radprof_cld_{lcver}_{rver}_{str(i).zfill(2)}.nc"
 
     # just check to make sure we aren't re-doing calculations that are already finished
-    if not os.path.exists(saveallPath):
+    if (
+        # not os.path.exists(saveclrcolPath)
+        not os.path.exists(savecldcolPath)
+        # and (not os.path.exists(saveallPath))
+    ):
+        print("go", i)
         # read in files in paths (subset of all_paths)
         ds = xr.open_mfdataset(
             paths,
@@ -167,27 +179,59 @@ for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 24)):
                 "THETA",
                 "RV",
                 "PI",
+                "WP",
             ]
         ]
 
+        ds = ds.sel(z=slice(1, 106), x=slice(50, 2100), y=slice(50, 2180))
+
+        ds = ds.assign(TEMP=ds.THETA * (ds.PI / cp))
+
         # remove all the gridpoints which are water, not interested in them here
         land = ds * landmask
+
         # from the land cells, define a cloud mask for a given mixing ratio threshold (I use 0.001 g/kg)
         cldmask = (land.CLIQ + land.CICE) >= 1.0e-5
 
+        # the cloud mask looks at the full column to see if there is cloud somewhere in the column
+        cldcolmask = cldmask.max(dim="z")
+
+        landcols = landmask.sum()
+        cldcols = cldcolmask.sum(dim=("x", "y"))
+        cldpts = cldmask.sum(dim=("x", "y"))
+
         # takes all land points which are also cloudy
-        cld = land * cldmask
-        cld = cld.sum(dim=("x", "y")) / cldmask.sum(dim=("x", "y"))
+        cld = land * cldcolmask
+        cld = cld.sum(dim=("x", "y")) / cldcols
+        cld = cld.assign(CFRAC_col=cldcols)
         # make sure to compute before saving, if I don't do this I sometimes end up with files that are just nan's
         cld = cld.compute()
+        cld.to_netcdf(savecldcolPath, engine="h5netcdf", mode="w")
+
+        # land points which are not cloudy
+        clr = land * ~cldcolmask
+        clr = clr.sum(dim=("x", "y")) / (landcols - cldcols)
+        clr = clr.compute()
+        clr.to_netcdf(saveclrcolPath, engine="h5netcdf", mode="w")
+
+        """# takes all land points which are also cloudy
+        cld = land * cldmask
+        cld = cld.sum(dim=("x", "y")) / cldpts
+        # make sure to compute before saving, if I don't do this I sometimes end up with files that are just nan's
+        cld = cld.assign(CFRAC=cldpts)
+        cld = cld.compute()
+
         cld.to_netcdf(savecldPath, engine="h5netcdf", mode="w")
 
         # land points which are not cloudy
         clr = land * ~cldmask
-        clr = clr.sum(dim=("x", "y")) / (~cldmask).sum(dim=("x", "y"))
+        clr = clr.sum(dim=("x", "y")) / (landcols - cldpts)
         clr = clr.compute()
-        clr.to_netcdf(savecldPath, engine="h5netcdf", mode="w")
 
-        land = land.sum(dim=("x", "y")) / landmask.sum(dim=("x", "y"))
+        clr.to_netcdf(saveclrPath, engine="h5netcdf", mode="w")"""
+
+        land = land.sum(dim=("x", "y")) / landcols
         land = land.compute()
         land.to_netcdf(saveallPath, engine="h5netcdf", mode="w")
+# else:
+#    print("no", i)
