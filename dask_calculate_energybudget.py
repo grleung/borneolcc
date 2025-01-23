@@ -7,7 +7,7 @@ import dask
 import dask.distributed as dd
 import glob
 
-client = dd.Client("tcp://172.16.1.237:8786")
+client = dd.Client("snowfall1:8786")
 client.upload_file("shared_model_params.py")
 from shared_model_params import (
     get_rams_output,
@@ -28,17 +28,14 @@ rver = "rte"
 
 dataPath = f"/squall/gleung/borneolcc/{lcver}/{rver}/"
 grid = "g1"
-figPath = f"/squall/gleung/borneolcc-figures/{lcver}/{rver}/quicklook/"
-
-if not os.path.isdir(figPath):
-    os.mkdir(figPath)
-
-all_paths = [p for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))]
+all_paths = [p for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))][
+    ((24 * 4) + 6) * 12 :
+]
 
 
 # these 2d things are fixed in time
 coord = xr.open_dataset(
-    f"/squall/gleung/borneolcc/lc1960/{rver}/a-A-2019-09-16-140000-g1.h5",
+    f"/squall/gleung/borneolcc/lc2019/{rver}/a-A-2019-09-16-140000-g1.h5",
     drop_variables=[
         v for v in ana_var if v not in ["LEAF_CLASS", "PATCH_AREA"]
     ],
@@ -61,13 +58,30 @@ def rename_dims(ds, dims=rams_dims_lite):
 
 rams_dims_lite.update({"t": "time"})
 
-variables = ["SFLUX_T", "SFLUX_R", "LWUP", "LWDN", "SWUP", "SWDN"]
+variables = [
+    "SFLUX_T",
+    "SFLUX_R",
+    "LWUP",
+    "LWDN",
+    "SWUP",
+    "SWDN",
+    "PCPRR",
+    "PCPRD",
+    "PCPRA",
+    "PCPRS",
+    "PCPRH",
+    "PCPRG",
+    "PCPRP",
+]
 drop_var = [v for v in lite_var if v not in variables]
 print(drop_var)
 
-for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 24)):
+print(len(np.array_split(all_paths, len(all_paths) // 72)))
+
+for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 72)):
+    i = i + 18
     times = [pd.to_datetime(p.split("/")[-1][4:-6]) for p in paths]
-    savePath = f"/squall/gleung/borneolcc-analysis/seb_land_{rver}_{str(i).zfill(2)}.nc"
+    savePath = f"/squall/gleung/borneolcc-analysis/seb/seb_land_{lcver}_{rver}_{str(i).zfill(2)}.nc"
 
     ds = xr.open_mfdataset(
         paths,
@@ -84,6 +98,19 @@ for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 24)):
     ds = ds.unify_chunks()
 
     out = xr.Dataset()
+
+    out = out.assign(
+        pcp=(
+            ds.PCPRR
+            + ds.PCPRD
+            + ds.PCPRA
+            + ds.PCPRS
+            + ds.PCPRH
+            + ds.PCPRG
+            + ds.PCPRP
+        )
+        * 3600
+    )
 
     out = out.assign(lhf=ds.SFLUX_R * lv)
     out = out.assign(shf=ds.SFLUX_T * cp)
