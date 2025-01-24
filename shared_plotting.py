@@ -20,13 +20,13 @@ yellow = prism[5]
 gray = "#303039"
 
 # importing plotting parameters
-# style = "/home/gleung/scripts/styles/bee-paperlight.mplstyle"
-# bg = "white"
-# lcol = "black"
+style = "/home/gleung/scripts/styles/bee-paperlight.mplstyle"
+bg = "white"
+lcol = "black"
 
-style = "/home/gleung/scripts/styles/bee-presentationtransparent.mplstyle"
-bg = "#2E3745"
-lcol = "white"
+#style = "/home/gleung/scripts/styles/bee-presentationtransparent.mplstyle"
+#bg = "#2E3745"
+#lcol = "white"
 plt.style.use(style)
 
 cloud = mcolors.ListedColormap(Ice_20.mpl_colors[4:])
@@ -51,3 +51,41 @@ def add_latlon(ax):
     gl.ylines = False
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
+
+def add_legend(
+    ax,
+    handles="None",
+    labels="None",
+    ncols=None,
+    loc=None,
+    bbox_to_anchor=None,
+    title=None,
+    handlelength=0,
+):
+
+    if handles != "None":
+        leg = ax.legend(
+            handles=handles,
+            labels=labels,
+            ncols=ncols,
+            loc=loc,
+            bbox_to_anchor=bbox_to_anchor,
+            title=title,
+            handlelength=handlelength,
+        )
+    else:
+        leg = ax.legend(
+            bbox_to_anchor=bbox_to_anchor,
+        )
+
+    handles, labels = leg.axes.get_legend_handles_labels()
+    texts = leg.get_texts()
+
+    for (
+        h,
+        text,
+    ) in zip(handles, texts):
+        try:
+            text.set_color(h.get_facecolor()[0])
+        except:
+            text.set_color(h.get_color())
