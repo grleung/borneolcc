@@ -14,7 +14,7 @@ from scipy.ndimage import (
 import dask
 import dask.distributed as dd
 
-client = dd.Client("snowfall1:8786")
+client = dd.Client("downdraft:8786")
 client.upload_file("shared_model_params.py")
 
 
@@ -35,7 +35,7 @@ def get_masked_statistics(sub, dataPath, tobacPath):
         time = pd.to_datetime(sub.timestr.iloc[0])
 
         cond_mask = xr.open_dataset(
-            f"{tobacPath}/cond_masks/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5",
+            f"{tobacPath}/cond_masks_column_anvil/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5",
             engine="h5netcdf",
             chunks="auto",
         )
@@ -49,7 +49,7 @@ def get_masked_statistics(sub, dataPath, tobacPath):
         cond_alt = ((cond_mask.ztn) / 1000) * shape
 
         sub["CTH"] = labeled_comprehension(
-            cond_alt / 1000,
+            cond_alt ,
             cond_mask.segmentation_mask,
             fts,
             np.nanmax,
@@ -58,7 +58,7 @@ def get_masked_statistics(sub, dataPath, tobacPath):
         )
 
         sub["CBH"] = labeled_comprehension(
-            cond_alt / 1000,
+            cond_alt,
             cond_mask.segmentation_mask,
             fts,
             np.nanmin,
@@ -92,36 +92,25 @@ def get_masked_statistics(sub, dataPath, tobacPath):
 
 n = 24
 
-for lc in ["lc1960"]:
+for lc in ["lc2019"]:
     dataPath = f"/squall/gleung/borneolcc/{lc}/rte/"
     tobacPath = f"/squall/gleung/borneolcc-analysis/tobac/{lc}_rte/"
-    figPath = f"/squall/gleung/borneolcc-figures/tobac-testing/{lc}-rte/"
 
-    if not os.path.isdir(figPath):
-        os.mkdir(figPath)
-
-    tracks = pd.read_parquet(f"{tobacPath}/combined_cond-w_segmented_tracks.pq")
+    tracks = pd.read_parquet(f"{tobacPath}/cloud_anvil_tracks_cleaned_wcond.pq")
+    tracks =  tracks[tracks.cond_ncells>0]
 
     frames = tracks.frame.unique()
     times = tracks.time.unique()
-    if lc == "lc2019":
-        frames = frames[times >= pd.to_datetime("2019-09-19 19:00")]
-    elif lc == "lc1960":
-        frames = frames[times >= pd.to_datetime("2019-09-18 18:00")]
 
+    print(len(frames)//n)
     for i, frames in enumerate(
         np.array_split(sorted(frames), len(frames) // n)
     ):
-        if lc == "lc2019":
-            i = i + 28
-        elif lc == "lc1960":
-            i = i + 29
-
         print(lc, i)
 
-        if not os.path.exists(
-            f"{tobacPath}/cloud_statistics_{str(i).zfill(2)}.pq"
-        ):
+        if (not os.path.exists(
+            f"{tobacPath}/new_cloud_anvil_statistics_{str(i).zfill(2)}.pq"
+        )):
             x = client.map(
                 get_masked_statistics,
                 [tracks[tracks.frame == frame] for frame in frames],
@@ -132,4 +121,4 @@ for lc in ["lc1960"]:
 
             x = pd.concat(x)
 
-            x.to_parquet(f"{tobacPath}/cloud_statistics_{str(i).zfill(2)}.pq")
+            x.to_parquet(f"{tobacPath}/new_cloud_anvil_statistics_{str(i).zfill(2)}.pq")

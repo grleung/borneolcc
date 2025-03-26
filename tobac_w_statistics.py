@@ -115,12 +115,12 @@ for lc in [
 ]:
     dataPath = f"/squall/gleung/borneolcc/{lc}/rte/"
     tobacPath = f"/squall/gleung/borneolcc-analysis/tobac/{lc}_rte/"
-    figPath = f"/squall/gleung/borneolcc-figures/tobac-testing/{lc}-rte/"
 
     if not os.path.isdir(figPath):
         os.mkdir(figPath)
 
-    tracks = pd.read_parquet(f"{tobacPath}/combined_cond-w_segmented_tracks.pq")
+    tracks = pd.read_parquet(f"{tobacPath}/cloud_anvil_tracks_cleaned_wcond.pq")
+    tracks =  tracks[tracks.cond_ncells>0]
     frames = tracks.frame.unique()
     times = tracks.time.unique()
 
@@ -141,9 +141,9 @@ for lc in [
         elif lc == "lc1960":
             i = i + 29
 
-        if not os.path.exists(
-            f"{tobacPath}/updraft_statistics_{str(i).zfill(2)}.pq"
-        ):
+        if (i>45) and (not os.path.exists(
+            f"{tobacPath}/new_updraft_statistics_{str(i).zfill(2)}.pq"
+        )):
             x = client.map(
                 get_masked_statistics,
                 [tracks[tracks.frame == frame] for frame in frames],
@@ -155,3 +155,6 @@ for lc in [
             x = pd.concat(x)
             print(i)
             x.to_parquet(f"{tobacPath}/updraft_statistics_{str(i).zfill(2)}.pq")
+        else:
+            print(i,'done')
+

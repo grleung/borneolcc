@@ -9,7 +9,7 @@ import tobac
 import glob
 
 # change this address depending on your scheduler address
-client = dd.Client("snowfall1:8786")
+client = dd.Client("downdraft:8786")
 client.upload_file("shared_model_params.py")
 
 from shared_model_params import (
@@ -26,14 +26,17 @@ outPath = f"/squall/gleung/borneolcc-analysis/tobac/"
 # parameters for segmentation
 params = {}
 params["method"] = "watershed"
-params["threshold"] = 1.0e-5  # kg/m3 mixing ratio
+params["threshold"] = 1.e-5 #1.0e-5  # kg/m3 mixing ratio
 params["seed_3D_flag"] = "box"
 params["vertical_coord"] = "ztn"
+
+#doing a test with box size for seeding
+params["seed_3D_size"] = (25,5,5)
 
 
 aero = "rte"
 
-for lc in ["lc2019"]:
+for lc in ['lc1960']:
     dataPath = f"{modelPath}/{lc}/{aero}/"
     # list of all timesteps where lite files are found in relevant folder
 
@@ -41,10 +44,13 @@ for lc in ["lc2019"]:
         p.split("/")[-1][:-6]
         for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
     ]
-    if lc == "lc1960":
-        all_paths = all_paths[((2 * 24) + 4) * 12 :]
-    elif lc == "lc2019":
-        all_paths = all_paths[((3 * 24) + 5) * 12 :]
+
+    if lc=='lc1960':
+        all_paths = all_paths[(12*6)+(12*24*3):]#all_paths[(12*6):(12*6)+(12*24*3)]
+    elif lc=='lc2019':
+        all_paths = all_paths[(12*6)+(12*24*3)+1:]#all_paths[(12*6):(12*6)+(12*24*3)+1]
+
+    print(all_paths)
     
     all_times = [pd.to_datetime(p.split("/")[-1][4:]) for p in all_paths]
 
@@ -61,18 +67,18 @@ for lc in ["lc2019"]:
 
     print(lc, len(all_paths))
 
-    savemaskPath = f"{outPath}/{lc}_{aero}/cond_masks/"
+    savemaskPath = f"{outPath}/{lc}_{aero}/cond_masks_column_anvil/"
     if not os.path.isdir(savemaskPath):
         os.mkdir(savemaskPath)
 
     for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 12)):
-        i = i + 68
+        i = i+68
         print(lc, i)
         savedfPath = (
-            f"{outPath}/{lc}_{aero}/cond_segmentation_{str(i).zfill(2)}.pq"
+            f"{outPath}/{lc}_{aero}/cond_column_anvil_segmentation_{str(i).zfill(2)}.pq"
         )
 
-        if not os.path.exists(savedfPath):
+        if (i==95) and (not os.path.exists(savedfPath)):
             print(i)
             times = [pd.to_datetime(p.split("/")[-1][4:]) for p in paths]
 
