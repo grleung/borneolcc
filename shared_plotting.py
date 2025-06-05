@@ -134,7 +134,7 @@ def add_diurnal_annotation(ax: plt.Axes, zeroline: bool = True) -> None:
         alpha=0.2,
     )
 
-    ax.set_xlim(0, 24)
+    ax.set_xlim(0, 23.5)
 
     if zeroline:
         ax.axhline(0, zorder=0, lw=1, ls=":")

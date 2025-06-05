@@ -176,81 +176,6 @@ def assign_dz(ds):
     return ds
 
 
-def compute_cond(
-    ds: xr.Dataset, return_dens: bool = False, cloud: bool = True
-) -> xr.Dataset:
-    """
-    Computes condensate mixing ratio (and density) from RAMS output
-
-    Arguments:
-        ds (xr.Dataset) -- RAMS output from one timestep, should have PI, THETA, RV + either (RCP, RSP, RPP) or (RTP)
-
-    Keyword Arguments:
-        return_dens (bool) -- Flag to return density (default: {False})
-        cloud (bool) -- Should condensate be calculated as (cloud + snow + pristine ice) or as (total water - vapor)?
-                        The latter includes all hydrometeors including precipitation. (default: {True})
-
-    Returns:
-        RAMS xarray dataset with condensate mixing ratio (and density)
-    """
-    ds = ds.assign(PRES=p00 * (ds.PI / cp) ** (cp / rd))
-    ds = ds.assign(TEMP=ds.THETA * (ds.PI / cp))
-    ds = ds.assign(DENS=ds.PRES / (rd * ds.TEMP * (1 + (0.61 * ds.RV))))
-
-    if cloud:
-        ds = ds.assign(COND=(ds.RCP + ds.RSP + ds.RPP) * ds.DENS)
-    else:
-        ds = ds.assign(COND=(ds.RTP - ds.RV) * ds.DENS)
-
-    if return_dens:
-        ds = ds[["COND", "DENS"]]
-    else:
-        ds = ds["COND"]
-    return ds
-
-
-def compute_intcond(ds: xr.Dataset, use_dens=True) -> xr.Dataset:
-    """
-    Vertically integrate condensate mixing ratio to get integrated condensate (mm)
-
-    Arguments:
-        ds (xr.Dataset) -- RAMS xarray dataset with COND (and possibly DENS)
-
-    Keyword Arguments:
-        use_dens (bool) -- flag for incorporating density in calculation (more accurate, technically) (default: {True})
-
-    Returns:
-        RAMS xarray dataset with integrated condensate (mm)
-    """
-
-    ds = assign_dz(ds)
-
-    if use_dens:
-        ds = ds.assign(intCON=((ds.DENS * ds.COND * ds.dz).sum(dim="z")) + 1e-9)
-    else:
-        ds = ds.assign(intCON=((ds.COND * ds.dz).sum(dim="z")) + 1e-9)
-
-    return ds["intCON"]
-
-
-def compute_pcp(ds):
-    ds = ds.assign(
-        PCPT=(
-            ds.PCPRR
-            + ds.PCPRP
-            + ds.PCPRS
-            + ds.PCPRA
-            + ds.PCPRG
-            + ds.PCPRH
-            + ds.PCPRD
-        )
-        * 3600
-    )
-
-    ds = ds["PCPT"]
-    return ds
-
-
 def combine_tobac_list(features_list):
     # takes a list of tobac output dataframes and combines them into one dataframe
     return tobac.utils.combine_feature_dataframes(features_list)
@@ -475,3 +400,28 @@ def get_rams_landcover(path: str, return_latlon=True) -> xr.Dataset:
         ds = ds[["lc"]]
 
     return ds
+
+
+def remove_boundaries(ds, bxy=bxy):
+    """
+    Removing points near the edges of the domain where nudging happens
+
+    Arguments:
+        ds -- any dataset
+
+    Keyword Arguments:
+        bxy -- boundary points at edge to remove (default: {bxy})
+    Returns:
+        xarray dataset without edge points
+    """
+    ds = ds.sel(x=slice(bxy, len(ds.x) - bxy), y=slice(bxy, len(ds.y) - bxy))
+
+    return ds
+
+
+landmask = (
+    get_rams_landcover(
+        f"/squall/gleung/borneolcc/lc1960/rte/a-A-2019-09-16-140000-g1.h5"
+    ).lc
+) != 0
+landmask = remove_boundaries(landmask, bxy=bxy)
