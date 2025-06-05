@@ -17,6 +17,7 @@ nx = 2750  # number x pts
 dx = 150  # grid spacing
 ny = 2802  # number y pts
 dy = 150  # grid spacing
+bxy = 50  # boundary points
 
 b = 100
 x = nx * dx / 1000  # total x-length
@@ -175,7 +176,23 @@ def assign_dz(ds):
     return ds
 
 
-def compute_cond(ds, return_dens=False, cloud=True):
+def compute_cond(
+    ds: xr.Dataset, return_dens: bool = False, cloud: bool = True
+) -> xr.Dataset:
+    """
+    Computes condensate mixing ratio (and density) from RAMS output
+
+    Arguments:
+        ds (xr.Dataset) -- RAMS output from one timestep, should have PI, THETA, RV + either (RCP, RSP, RPP) or (RTP)
+
+    Keyword Arguments:
+        return_dens (bool) -- Flag to return density (default: {False})
+        cloud (bool) -- Should condensate be calculated as (cloud + snow + pristine ice) or as (total water - vapor)?
+                        The latter includes all hydrometeors including precipitation. (default: {True})
+
+    Returns:
+        RAMS xarray dataset with condensate mixing ratio (and density)
+    """
     ds = ds.assign(PRES=p00 * (ds.PI / cp) ** (cp / rd))
     ds = ds.assign(TEMP=ds.THETA * (ds.PI / cp))
     ds = ds.assign(DENS=ds.PRES / (rd * ds.TEMP * (1 + (0.61 * ds.RV))))
@@ -190,6 +207,30 @@ def compute_cond(ds, return_dens=False, cloud=True):
     else:
         ds = ds["COND"]
     return ds
+
+
+def compute_intcond(ds: xr.Dataset, use_dens=True) -> xr.Dataset:
+    """
+    Vertically integrate condensate mixing ratio to get integrated condensate (mm)
+
+    Arguments:
+        ds (xr.Dataset) -- RAMS xarray dataset with COND (and possibly DENS)
+
+    Keyword Arguments:
+        use_dens (bool) -- flag for incorporating density in calculation (more accurate, technically) (default: {True})
+
+    Returns:
+        RAMS xarray dataset with integrated condensate (mm)
+    """
+
+    ds = assign_dz(ds)
+
+    if use_dens:
+        ds = ds.assign(intCON=((ds.DENS * ds.COND * ds.dz).sum(dim="z")) + 1e-9)
+    else:
+        ds = ds.assign(intCON=((ds.COND * ds.dz).sum(dim="z")) + 1e-9)
+
+    return ds["intCON"]
 
 
 def compute_pcp(ds):
@@ -400,3 +441,37 @@ ana_var = [
     "WC",
     "WP",
 ]
+
+
+def get_rams_landcover(path: str, return_latlon=True) -> xr.Dataset:
+    """
+    Return RAMS landcover
+
+    Arguments:
+        path (str) -- filepath of RAMS analysis file
+
+    Keyword Arguments:
+        return_latlon (bool) -- flag for including lat/lon in output (default: {True})
+
+    Returns:
+        RAMS xarray dataset with land cover type (+ lat/lon)
+    """
+
+    from shared_model_params import get_rams_output, rams_dims_anal
+
+    ds = get_rams_output(
+        path,
+        variables=["PATCH_AREA", "LEAF_CLASS", "GLON", "GLAT"],
+        dims=rams_dims_anal,
+    )[["PATCH_AREA", "LEAF_CLASS", "GLON", "GLAT"]]
+
+    # I am summing the land cover across patches because the model set up just has 1 or 0 as patch area
+    # this is not strictly correct if using multiple land cover types within one grid point
+    ds = ds.assign(lc=(ds.LEAF_CLASS * ds.PATCH_AREA).sum(dim="p"))
+
+    if return_latlon:
+        ds = ds[["GLON", "GLAT", "lc"]]
+    else:
+        ds = ds[["lc"]]
+
+    return ds
