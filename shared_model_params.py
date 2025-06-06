@@ -419,9 +419,18 @@ def remove_boundaries(ds, bxy=bxy):
     return ds
 
 
+# read in the land mask
 landmask = (
     get_rams_landcover(
         f"/squall/gleung/borneolcc/lc1960/rte/a-A-2019-09-16-140000-g1.h5"
     ).lc
 ) != 0
 landmask = remove_boundaries(landmask, bxy=bxy)
+
+# read in the topography
+topo = get_rams_output(
+    f"/squall/gleung/borneolcc/lc1960/rte/a-A-2019-09-16-140000-g1.h5",
+    variables=["GLON", "GLAT", "TOPT"],
+    dims=rams_dims_anal,
+)[["GLON", "GLAT", "TOPT"]]
+topo = remove_boundaries(topo, bxy=bxy)

@@ -147,18 +147,125 @@ def compute_seb(ds: xr.Dataset) -> xr.Dataset:
     from shared_model_params import lv, cp
 
     # convert temperature and moisture flux into W/m2
-    ds = ds.assign(lhf=-ds.SFLUX_R * lv)  # latent heat flux
-    ds = ds.assign(shf=-ds.SFLUX_T * cp)  # sensible heat flux
+    ds = ds.assign(
+        {
+            "lhf": -ds.SFLUX_R * lv,  # latent heat flux
+            "shf": -ds.SFLUX_T * cp,  # sensible heat flux
+        }
+    )
 
     # take first real model level above surface
-    ds = ds.assign(lwdn=ds.LWDN.sel(z=1))  # downwelling longwave
-    ds = ds.assign(lwup=ds.LWUP.sel(z=1))  # upwelling longwave
-    ds = ds.assign(swdn=ds.SWDN.sel(z=1))  # downwelling shortwave
-    ds = ds.assign(swup=ds.SWUP.sel(z=1))  # upwelling shortwave
+    ds = ds.assign(
+        {
+            "lwdn": ds.LWDN.sel(z=1),  # downwelling longwave
+            "lwup": ds.LWUP.sel(z=1),  # upwelling longwave
+            "swdn": ds.SWDN.sel(z=1),  # downwelling shortwave
+            "swup": ds.SWUP.sel(z=1),  # upwelling shortwave
+        }
+    )
 
-    ds = ds.assign(swnet=ds.swdn - ds.swup)  # net shortwave
-    ds = ds.assign(lwnet=ds.lwdn - ds.lwup)  # net longwave
+    ds = ds.assign(
+        {
+            "swnet": ds.swdn - ds.swup,  # net shortwave
+            "lwnet": ds.lwdn - ds.lwup,  # net longwave
+        }
+    )
 
     ds = ds.assign(g=-(ds.swnet + ds.lwnet + ds.shf + ds.lhf))  # heat storage
 
     return ds[["lhf", "shf", "lwnet", "swnet", "g"]]
+
+
+def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Computes temperature and dewpoints at nearest model level to the surface
+    and at the canopy height for given RAMS file
+
+    Arguments:
+        ds -- RAMS output with variables [THETA,PI,RV, CAN_TEMP,CAN_RVAP]
+
+    Returns:
+        xarray of temp and dewpoint at near-surface atmosphere and canopy
+    """
+    from shared_model_params import cp, rd, p00
+    import metpy.calc as mpcalc
+    import metpy.units as units
+
+    ds = ds.sel(z=1, p=1)
+
+    ds = ds.assign(
+        {
+            "AIR_T": (ds.THETA * (ds.PI / cp)) - 273.15,  # temperature in degC
+            "PRES": (p00 * (ds.PI / cp) ** (cp / rd)) / 100,  # pressure in hPa
+        }
+    )
+
+    ds = ds.assign(
+        AIR_Td=(
+            ("y", "x"),
+            mpcalc.dewpoint_from_specific_humidity(
+                ds.PRES.values * units.units("hPa"),
+                ds.AIR_T.values * units.units("degC"),
+                ds.RV.values * units.units("kg/kg"),
+            ).magnitude,
+        )
+    )  # dewpoint in degC
+
+    ds = ds.assign(AIR_RV=ds.RV)
+
+    ds = ds.assign(CAN_T=ds.CAN_TEMP - 273.15)  # canopy temp in degC
+    ds = ds.assign(
+        CAN_Td=(
+            ("y", "x"),
+            mpcalc.dewpoint_from_specific_humidity(
+                ds.PRES.values * units.units("hPa"),
+                ds.CAN_T.values * units.units("degC"),
+                ds.CAN_RVAP.values * units.units("kg/kg"),
+            ).magnitude,
+        )
+    )  # canopy dewpoint in degC
+
+    ds = ds.assign(CAN_RV=ds.CAN_RVAP)
+
+    return ds[["AIR_T", "AIR_Td", "AIR_RV", "CAN_T", "CAN_Td", "CAN_RV"]]
+
+
+def compute_surf_pert(
+    ds: xr.Dataset, landmask: xr.Dataset, topo: xr.Dataset
+) -> xr.Dataset:
+    """
+    Computes perturbations from mean over land for given RAMS file. Currently
+    calculates heat flux (LHF + SHF) and near surface thetav (as a measure of buoyancy)
+
+    Arguments:
+        ds -- RAMS output with variables [SFLUX_R,SFLUX_T,THETA,RV]
+        landmask -- xarray with landmask
+        topo -- xarray with topography height
+
+    Returns:
+        xarray(y,x) of heat fluxes (hf) and thetav + perturbation from mean values
+    """
+    from shared_model_params import lv, cp
+
+    ds = ds.sel(z=1)
+
+    # only need land points where altitude < 500m ASL
+    ds = ds.where(landmask).where(topo <= 500)
+
+    # compute virtual potential temperature
+    ds = ds.assign(thetav=ds.THETA * (1 + (0.61 * ds.RV)))
+
+    # convert temperature and moisture flux into W/m2 (magnitude only)
+    ds = ds.assign(
+        {
+            "lhf": ds.SFLUX_R * lv,  # latent heat flux
+            "shf": ds.SFLUX_T * cp,  # sensible heat flux
+        }
+    )
+    ds = ds.assign(hf=ds.lhf + ds.shf)
+
+    # get perturbation from mean value at a given time
+    ds = ds.assign(hf_pert=ds.hf - (ds.hf.mean(dim=("x", "y"))))
+    ds = ds.assign(thetav_pert=ds.thetav - (ds.thetav.mean(dim=("x", "y"))))
+
+    return ds[["hf", "hf_pert", "thetav", "thetav_pert"]]
