@@ -1,9 +1,9 @@
 """
-This script takes RAMS output and creates an hdf5 file (.h5) that contains the
-mean surface energy budget over land points only, as an average over the local time
-diurnal cycle (over the three simulation days). By default, the time resolution is 30mins.
-There is one hdf5 file per run, which are saved under
- '/squall/gleung/borneolcc-analysis/paper-analysis/seb-diurnal-[run].h5'
+This script takes RAMS output and creates a hdf5 file (.h5) that contains the
+mean thermodynamic profile for the near-surface air and canopy air over land points only,
+as an average over the local time diurnal cycle (over the three simulation days). By default,
+the time resolution is 30mins. There is one hdf5 file per run, which are saved under
+ '/squall/gleung/borneolcc-analysis/paper-analysis/nearsurf-thermo-diurnal-[run].h5'
 """
 
 # importing files
@@ -12,7 +12,7 @@ import pandas as pd
 import xarray as xr
 import dask.distributed as dd
 
-client = dd.Client("snowfall2:8786")  # my dask scheduler
+client = dd.Client("snowfall3:8786")  # my dask scheduler
 
 client.upload_file("shared_model_params.py")
 from shared_model_params import get_rams_output, landmask, remove_boundaries
@@ -21,7 +21,7 @@ client.upload_file("shared_processing.py")
 from shared_processing import (
     find_paths_in_time_range,
     get_land_mean,
-    compute_seb,
+    compute_canopy_nearsurf,
 )
 
 landmask = landmask.compute()
@@ -46,14 +46,14 @@ for run in runs:
         ds = client.map(
             get_rams_output,
             paths,
-            variables=["SFLUX_T", "SFLUX_R", "LWDN", "LWUP", "SWDN", "SWUP"],
+            variables=["THETA", "PI", "RV", "CAN_TEMP", "CAN_RVAP"],
         )
 
         # exclude points near boundaries
         ds = client.map(remove_boundaries, ds)
 
-        # compute energy budget
-        ds = client.map(compute_seb, ds)
+        # compute near surface and canopy thermodynamics
+        ds = client.map(compute_canopy_nearsurf, ds)
 
         # compute mean over land points
         ds = client.map(get_land_mean, ds, landmask=landmask)
@@ -67,6 +67,6 @@ for run in runs:
     out = xr.concat(out, dim=pd.Series(times, name="hour_day"))
 
     out.to_netcdf(
-        f"/squall/gleung/borneolcc-analysis/paper-analysis/seb-diurnal-{run}.h5",
+        f"/squall/gleung/borneolcc-analysis/paper-analysis/nearsurf-thermo-diurnal-{run}.h5",
         engine="h5netcdf",
     )
