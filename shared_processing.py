@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import xarray as xr
-from shared_model_params import assign_dz, lv, cp
+from shared_model_params import assign_dz, lv, cp, p00, rd
 
 
 def compute_cond(
@@ -269,3 +269,31 @@ def compute_surf_pert(
     ds = ds.assign(thetav_pert=ds.thetav - (ds.thetav.mean(dim=("x", "y"))))
 
     return ds[["hf", "hf_pert", "thetav", "thetav_pert"]]
+
+
+from shared_model_params import get_rams_landcover, remove_boundaries, bxy
+
+past_lc = get_rams_landcover(
+    f"/squall/gleung/borneolcc/lc1960/rte/a-A-2019-09-16-140000-g1.h5"
+)
+past_lc = remove_boundaries(past_lc, bxy=bxy)
+pres_lc = get_rams_landcover(
+    f"/squall/gleung/borneolcc/lc2019/rte/a-A-2019-09-16-140000-g1.h5"
+)
+pres_lc = remove_boundaries(pres_lc, bxy=bxy)
+
+
+forest_loss = ((pres_lc.lc == 7) / (pres_lc.lc != 0)) - (
+    (past_lc.lc == 7) / (past_lc.lc != 0)
+)
+
+
+def smooth_data_plotting(data, coarseres, rollres, min_periods=1):
+    data = (
+        data.coarsen(x=coarseres, y=coarseres, boundary="pad")
+        .mean()
+        .rolling(x=rollres, y=rollres, min_periods=min_periods)
+        .mean()
+    )
+
+    return data

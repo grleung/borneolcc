@@ -3,6 +3,8 @@ import numpy as np
 import h5py
 import xarray as xr
 import tobac
+import dask
+import os
 
 # physical constants
 g = 9.8065
@@ -13,9 +15,9 @@ p00 = 100000
 rgas = 287
 lv = 2.5e6
 
-nx = 2750  # number x pts
+nx = 2150  # number x pts
 dx = 150  # grid spacing
-ny = 2802  # number y pts
+ny = 2230  # number y pts
 dy = 150  # grid spacing
 bxy = 50  # boundary points
 
@@ -174,11 +176,6 @@ def assign_dz(ds):
     # altitudes of sigma-z levels in 3d
     ds = ds.assign(dz=(("z", dz)))
     return ds
-
-
-def combine_tobac_list(features_list):
-    # takes a list of tobac output dataframes and combines them into one dataframe
-    return tobac.utils.combine_feature_dataframes(features_list)
 
 
 def save_files(out, savePath):
