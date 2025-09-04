@@ -10,7 +10,7 @@ import pandas as pd
 import xarray as xr
 import dask.distributed as dd
 
-client = dd.Client("solvarg:8788")  # my dask scheduler
+client = dd.Client("solvarg:8786")  # my dask scheduler
 
 client.upload_file("shared_model_params.py")
 from shared_model_params import get_rams_output, p00, cp, rd
@@ -26,9 +26,9 @@ times = np.arange(
     8, 20, time_resolution
 )  # times to check as hour of the day (localtime)
 
-horizontal_resolution = 0.6  # horizontal spatial resolution in km (600m = 4dx)
+horizontal_resolution = 3  # horizontal spatial resolution in km (3km = 20dx)
 dists = np.arange(
-    0, 60, 0.6
+    0, 60, horizontal_resolution
 )  # distances from coastline to use as binning variable (in km)
 
 
@@ -110,11 +110,13 @@ def compute_cfrac(path, run):
     sub = features[features.time == time]
 
     # read in tobac cloud mask
-    mask = xr.open_dataarray(
+    mask = xr.open_dataset(
         f"/squall/gleung/borneolcc-analysis/tobac/{run}_rte/cond_masks/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5",
         engine="h5netcdf",
         chunks="auto",
-    )
+        decode_cf=False,
+    ).segmentation_mask
+
     # remove boundaries outside of analysis area
     mask = mask.sel(x=slice(bxy, nx - bxy - 1), y=slice(bxy, ny - bxy - 1))
 

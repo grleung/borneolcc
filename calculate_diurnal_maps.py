@@ -1,3 +1,8 @@
+"""
+This creates analysis plots for Figure 8. It calculates the mean spatial map of surface flux and near-surface thetav
+for given time windows.
+"""
+
 # importing files
 import numpy as np
 import pandas as pd
