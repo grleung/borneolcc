@@ -1,3 +1,10 @@
+"""
+Step 7 of tobac processing: Calculate cloud statistics
+
+Input: parquet file with merged features 'cloudy_updrafts.pq' + condensate masks
+Output: parquet file with features 'cloudy_updraft_statistics.pq'
+"""
+
 import os
 import xarray as xr
 import numpy as np
@@ -9,7 +16,7 @@ from scipy.ndimage import (
 import dask.distributed as dd
 import glob
 
-client = dd.Client("solvarg:8786")  # anvil:9999")
+client = dd.Client("solvarg:8786")
 client.upload_file("shared_model_params.py")
 
 
@@ -37,9 +44,7 @@ def get_masked_statistics(frame, tobacPath):
 
         cond_mask = cond_mask.assign(dz=("z", dz))
 
-        shape = (
-            cond_mask.segmentation_mask / cond_mask.segmentation_mask
-        ).fillna(1)
+        shape = (cond_mask.segmentation_mask / cond_mask.segmentation_mask).fillna(1)
         cond_dz = cond_mask.dz * shape
         cond_alt = ((cond_mask.ztn) / 1000) * shape
 
@@ -98,9 +103,7 @@ for lc in ["lc1960", "lc2019"]:
     times = tracks.time.unique()
 
     print(len(frames) // n)
-    for i, frames_ in enumerate(
-        np.array_split(sorted(frames), len(frames) // n)
-    ):
+    for i, frames_ in enumerate(np.array_split(sorted(frames), len(frames) // n)):
         print(lc, i)
 
         if not os.path.exists(
@@ -115,9 +118,7 @@ for lc in ["lc1960", "lc2019"]:
 
             x = pd.concat(x)
 
-            x.to_parquet(
-                f"{tobacPath}/cloudy_updraft_statistics_{str(i).zfill(2)}.pq"
-            )
+            x.to_parquet(f"{tobacPath}/cloudy_updraft_statistics_{str(i).zfill(2)}.pq")
 
     savePaths = sorted(glob.glob(f"{tobacPath}/cloudy_updraft_statistics_*.pq"))
     print(len(savePaths))

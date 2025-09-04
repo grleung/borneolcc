@@ -1,3 +1,10 @@
+"""
+Step 2 of tobac processing: Track updraft features
+
+Input: parquet file with features 'w_features.pq'
+Output: parquet file with tracked features 'w_tracks.pq'
+"""
+
 # Import some shared libraries
 import dask.distributed as dd
 import pandas as pd
@@ -54,6 +61,6 @@ for lc in lcs:
         "max"
     ) / dt.timedelta(minutes=1)
 
-    tracks.to_parquet(f"{outPath}/{lc}_rte/w_tracks_new.pq", engine="pyarrow")
+    tracks.to_parquet(f"{outPath}/{lc}_rte/w_tracks.pq", engine="pyarrow")
 
     print(len(tracks), len(tracks.cell.unique()))

@@ -1,3 +1,10 @@
+"""
+Step 4 of tobac processing: Segment condensate features
+
+Input: parquet file with tracked features 'w_tracks.pq' + RAMS lite files
+Output: parquet file with segmented features 'cond_segmentation.pq' + condensate mask files per timestep
+"""
+
 # Import some shared libraries
 import os
 import dask.distributed as dd
@@ -97,8 +104,7 @@ for lc in ["lc1960"]:
 
     # list of all timesteps where lite files are found in relevant folder
     all_paths = [
-        p.split("/")[-1][:-6]
-        for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
+        p.split("/")[-1][:-6] for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
     ]
     all_paths = all_paths[
         6 * 12 : ((6 * 12) + (3 * 24 * 12)) + 1
@@ -113,9 +119,7 @@ for lc in ["lc1960"]:
     # split into smaller groups to fit into memory
     for i, paths in enumerate(np.array_split(all_paths, len(all_paths) // 12)):
         print(lc, i)
-        savedfPath = (
-            f"{outPath}/{lc}_rte/cond_segmentation_{str(i).zfill(2)}.pq"
-        )
+        savedfPath = f"{outPath}/{lc}_rte/cond_segmentation_{str(i).zfill(2)}.pq"
         print(savedfPath)
 
         if not os.path.exists(savedfPath):

@@ -1,3 +1,10 @@
+"""
+Step 1 of tobac processing: Identify updraft features
+
+Input: RAMS lite files
+Output: parquet file with features 'w_features.pq'
+"""
+
 # Import some shared libraries
 import os
 import dask.distributed as dd
@@ -37,8 +44,7 @@ for lc in ["lc1960", "lc2019"]:
 
     # list of all timesteps where lite files are found in relevant folder
     all_paths = [
-        p.split("/")[-1][:-6]
-        for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
+        p.split("/")[-1][:-6] for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
     ]
     all_paths = all_paths[
         6 * 12 : ((6 * 12) + (3 * 24 * 12)) + 1
@@ -68,10 +74,7 @@ for lc in ["lc1960", "lc2019"]:
                 ds = client.map(
                     xr.DataArray.expand_dims,
                     ds,
-                    [
-                        {"time": [pd.to_datetime(p.split("/")[-1][4:])]}
-                        for p in paths
-                    ],
+                    [{"time": [pd.to_datetime(p.split("/")[-1][4:])]} for p in paths],
                 )
 
                 # actual tobac run
@@ -88,9 +91,7 @@ for lc in ["lc1960", "lc2019"]:
 
                 # once loop is finished, concatenate all the figures
                 # then save it to a parquet file
-                all_features = tobac.utils.combine_feature_dataframes(
-                    all_features
-                )
+                all_features = tobac.utils.combine_feature_dataframes(all_features)
 
                 save_files(all_features, savedfPath)
 

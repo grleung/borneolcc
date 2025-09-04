@@ -1,3 +1,10 @@
+"""
+Step 8 of tobac processing: Calculate cloud footprints
+
+Input: parquet file with merged features 'cloudy_updraft_statistics.pq' + condensate masks
+Output: parquet file with features 'cloudy_updraft_statistics_full.pq'
+"""
+
 import os
 import xarray as xr
 import numpy as np
@@ -47,9 +54,7 @@ for lc in ["lc2019"]:
             )
 
             locs = find_objects(cond_mask.segmentation_mask)
-            locs = [
-                l for i, l in enumerate(locs) if (l != None) and (i + 1 in fts)
-            ]
+            locs = [l for i, l in enumerate(locs) if (l != None) and (i + 1 in fts)]
 
             locs = pd.DataFrame(locs, index=fts[sub["condensate_volume"] > 0])
             locs = locs.loc[fts]
@@ -66,9 +71,7 @@ for lc in ["lc2019"]:
             x = client.gather(x)
             x = pd.DataFrame(x, index=fts[sub["condensate_volume"] > 0])
             if len(x > 0):
-                sub["cond_footprint"] = sub.feature.map(x[0]) * (
-                    dxy * dxy / (1000**2)
-                )
+                sub["cond_footprint"] = sub.feature.map(x[0]) * (dxy * dxy / (1000**2))
 
                 out_df.append(sub)
             else:

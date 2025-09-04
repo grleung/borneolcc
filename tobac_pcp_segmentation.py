@@ -1,3 +1,10 @@
+"""
+Step 6 of tobac processing: Segment surface rain rate
+
+Input: parquet file with merged features 'cloudy_updrafts.pq' + RAMS lite files
+Output: parquet file with segmented features 'cloudy_updrafts_raining.pq'
+"""
+
 # Import some shared libraries
 import os
 import dask.distributed as dd
@@ -35,21 +42,16 @@ for lc in ["lc2019", "lc1960"]:
     # list of all timesteps where lite files are found in relevant folder
 
     all_paths = [
-        p.split("/")[-1][:-6]
-        for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
+        p.split("/")[-1][:-6] for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
     ]
     all_times = [pd.to_datetime(p.split("/")[-1][4:]) for p in all_paths]
 
     dxy = 150
 
-    trackPath = f"{outPath}/{lc}_rte/cloudy_updrafts.pq"  # combined_cond-w_segmented_tracks.pq"
+    trackPath = f"{outPath}/{lc}_rte/cloudy_updrafts.pq"
     tracks = pd.read_parquet(trackPath)
 
-    paths = [
-        p
-        for i, p in enumerate(all_paths)
-        if (all_times[i] in tracks.time.values)
-    ]
+    paths = [p for i, p in enumerate(all_paths) if (all_times[i] in tracks.time.values)]
 
     print(len(paths))
     print(paths)
@@ -59,7 +61,7 @@ for lc in ["lc2019", "lc1960"]:
     if not os.path.isdir(savemaskPath):
         os.mkdir(savemaskPath)
 
-    savedfPath = f"{outPath}/{lc}_rte/cloudy_updrafts_raining.pq"  # combined_cond-w-pcp_segmented_tracks.pq"
+    savedfPath = f"{outPath}/{lc}_rte/cloudy_updrafts_raining.pq"
 
     if not os.path.exists(savedfPath):
         times = [pd.to_datetime(p.split("/")[-1][4:]) for p in paths]
@@ -112,9 +114,7 @@ for lc in ["lc2019", "lc1960"]:
 
         tracks["pcp_ncells"] = tracks.index.map(pcp.ncells)
         tracks = tracks.reset_index()
-        tracks["cellmax_pcpncells"] = tracks.groupby(
-            "cell"
-        ).pcp_ncells.transform("max")
+        tracks["cellmax_pcpncells"] = tracks.groupby("cell").pcp_ncells.transform("max")
 
         save_files(tracks, savedfPath)
 

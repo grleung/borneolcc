@@ -1,3 +1,10 @@
+"""
+Step 9 of tobac processing: Calculate precipitation statistics
+
+Input: parquet file with merged features 'cloudy_updrafts_raining.pq' + precipitation masks
+Output: parquet file with features 'raining_cloudy_updraft_statistics.pq'
+"""
+
 import os
 import xarray as xr
 import numpy as np
@@ -94,9 +101,7 @@ for lc in ["lc1960", "lc2019"]:
     frames = tracks.frame.unique()
     times = tracks.time.unique()
 
-    for i, frames_ in enumerate(
-        np.array_split(sorted(frames), len(frames) // n)
-    ):
+    for i, frames_ in enumerate(np.array_split(sorted(frames), len(frames) // n)):
 
         if not os.path.exists(
             f"{tobacPath}/raining_cloudy_updraft_statistics_{str(i).zfill(2)}.pq"
@@ -115,9 +120,7 @@ for lc in ["lc1960", "lc2019"]:
                 f"{tobacPath}/raining_cloudy_updraft_statistics_{str(i).zfill(2)}.pq"
             )
 
-    savePaths = sorted(
-        glob.glob(f"{tobacPath}/raining_cloudy_updraft_statistics_*.pq")
-    )
+    savePaths = sorted(glob.glob(f"{tobacPath}/raining_cloudy_updraft_statistics_*.pq"))
     print(len(savePaths))
     print(len(frames) // 24)
 

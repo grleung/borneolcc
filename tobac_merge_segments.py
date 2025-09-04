@@ -1,3 +1,10 @@
+"""
+Step 5 of tobac processing: Merge updraft and condensate features
+
+Input: parquet file with tracked features 'w_tracks.pq' + updraft mask files per timestep + condensate mask files per timestep
+Output: parquet file with merged features 'cloudy_updrafts.pq'
+"""
+
 import glob
 import os 
 import xarray as xr
@@ -36,7 +43,7 @@ def get_overlap_features(time, tracks_sub):
 
         return(tracks_sub)
 
-for run in ['lc1960']:
+for run in ['lc1960','lc2019']:
     tobacPath = f'/squall/gleung/borneolcc-analysis/tobac/{run}_rte/'
 
     tracks = pd.read_parquet(f"{tobacPath}/w_tracks.pq")

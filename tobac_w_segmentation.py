@@ -1,3 +1,10 @@
+"""
+Step 3 of tobac processing: Segment updraft features
+
+Input: parquet file with tracked features 'w_tracks.pq' + RAMS lite files
+Output: parquet file with segmented features 'w_segmentation.pq' + updraft mask files per timestep
+"""
+
 # Import some shared libraries
 import os
 import dask.distributed as dd
@@ -33,9 +40,7 @@ def dask_w_segmentation(path, lc):
 
     time = pd.to_datetime(path.split("/")[-1][4:])
 
-    ds = get_rams_output(
-        f"{dataPath}/{path}-g1.h5", variables=["WP"], prep_tobac=True
-    )
+    ds = get_rams_output(f"{dataPath}/{path}-g1.h5", variables=["WP"], prep_tobac=True)
     ds = ds.expand_dims({"time": [time]})
 
     tracks = pd.read_parquet(f"{outPath}/{lc}_rte/w_tracks.pq")
@@ -93,8 +98,7 @@ for lc in sys.argv[1:]:  # ["lc1960", "lc2019"]:
 
     # list of all timesteps where lite files are found in relevant folder
     all_paths = [
-        p.split("/")[-1][:-6]
-        for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
+        p.split("/")[-1][:-6] for p in sorted(glob.glob(f"{dataPath}/a-L-*-g1.h5"))
     ]
     all_paths = all_paths[
         6 * 12 : ((6 * 12) + (3 * 24 * 12)) + 1

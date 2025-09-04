@@ -1,3 +1,10 @@
+"""
+Step 10 (last) of tobac processing: Final QC
+
+Input: parquet file with merged features 'raining_cloudy_updraft_statistics.pq' + parquet file with merged features 'cloudy_updraft_statistics_full.pq'
+Output: parquet file with features 'qc_final_cloudy_updrafts.pq'
+"""
+
 import os
 import pandas as pd
 import numpy as np
