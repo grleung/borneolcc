@@ -1,58 +1,55 @@
-import pandas as pd
-import os
 import glob
+import os 
+import xarray as xr
+import pandas as pd
 import numpy as np
-import dask.distributed as dd
 import datetime as dt
+from shared_plotting import *
+import dask.distributed as dd
 
-
-client = dd.Client("snowfall2:8786")
+client = dd.Client('anvil:9999')
 client.upload_file("shared_model_params.py")
 
-from shared_model_params import (
-    get_rams_output,
-    combine_tobac_list,
-    save_files,
-    compute_cond,
-)
+def get_overlap_features(time, tracks_sub):
 
+    if len(tracks_sub)>0:
 
-modelPath = "/squall/gleung/borneolcc/"
-outPath = f"/squall/gleung/borneolcc-analysis/tobac/"
+        cond_mask = xr.open_dataset(f'/squall/gleung/borneolcc-analysis/tobac/{run}_rte/cond_masks/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5',
+                            chunks='auto',engine='h5netcdf')
+        w_mask = xr.open_dataset(f'/squall/gleung/borneolcc-analysis/tobac/{run}_rte/w_masks/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5',
+                                chunks='auto',engine='h5netcdf')
 
-for lc in ["lc1960"]:
-    tracks = pd.read_parquet(f"{outPath}/{lc}_rte/w_tracks-new.pq")
+        # mask will have 1s where both updraft and condensate are present
+        # This will allow us to make sure updraft and condensate regions are coincident/overlapping in space
 
-    cond = []
-    for p in sorted(glob.glob(f"{outPath}/{lc}_rte/cond_segmentation_*.pq")):
+        full_mask = (w_mask.segmentation_mask>0)*(cond_mask.segmentation_mask>0)
+        
+        fts = cond_mask.where(full_mask).segmentation_mask.compute()
+        ftlist = np.unique(fts.values)
+        ftlist = ftlist[~np.isnan(ftlist)]
+        
+        print(len(tracks_sub))
+        
+        tracks_sub = tracks_sub[tracks_sub.feature.isin(ftlist)]
 
-        df = pd.read_parquet(p)
+        print(len(tracks_sub))
 
-        cond.append(df)
+        return(tracks_sub)
 
-    cond = combine_tobac_list(cond)
+for run in ['lc1960']:
+    tobacPath = f'/squall/gleung/borneolcc-analysis/tobac/{run}_rte/'
 
-    cond = cond.groupby(["time", "x", "z"]).last().reset_index()
-    cond["ncells_cond"] = cond["ncells"]
-
-    w = []
-    for p in sorted(glob.glob(f"{outPath}/{lc}_rte/w_segmentation_*.pq")):
-
-        df = pd.read_parquet(p)
-
-        w.append(df)
-
-    w = combine_tobac_list(w)
-    w = w.groupby(["time", "x", "z"]).last().reset_index()
-    w["ncells_w"] = w["ncells"]
-
+    tracks = pd.read_parquet(f"{tobacPath}/w_tracks.pq")
+    cond =  pd.read_parquet(f"{tobacPath}/cond_segmentation.pq")
+    w =  pd.read_parquet(f"{tobacPath}/w_segmentation.pq")
+    
     tracks = tracks.set_index(["time", "cell"])
 
     tracks["w_ncells"] = tracks.index.map(
-        w.groupby(["time", "cell"]).ncells_w.first()
+        w.groupby(["time", "cell"]).ncells.first()
     )
     tracks["cond_ncells"] = tracks.index.map(
-        cond.groupby(["time", "cell"]).ncells_cond.first()
+        cond.groupby(["time", "cell"]).ncells.first()
     )
 
     tracks["cellmax_wncells"] = tracks.groupby("cell").w_ncells.transform("max")
@@ -72,4 +69,28 @@ for lc in ["lc1960"]:
 
     tracks["local_time"] = tracks.time + dt.timedelta(hours=8)
 
-    tracks.to_parquet(f"{outPath}/{lc}_rte/combined_cond-w_segmented_tracks.pq")
+    times = sorted(tracks.time.unique())
+
+    print(len(times))
+    for i, times_ in enumerate(np.array_split(times,len(times)//50)):
+        if  (not os.path.exists(f'{tobacPath}/cloudy_updrafts_{str(i).zfill(2)}.pq')):
+            tracks_ = client.map(get_overlap_features, times_, [tracks[tracks.time==t] for t in times_])
+
+            tracks_ = client.gather(tracks_)
+
+            tracks_ = pd.concat(tracks_)
+
+            tracks_.to_parquet(f'{tobacPath}/cloudy_updrafts_{str(i).zfill(2)}.pq')
+
+            print(f'{tobacPath}/cloudy_updrafts_{str(i).zfill(2)}.pq')
+
+    savePaths = sorted(glob.glob(f"{tobacPath}/cloudy_updrafts_*.pq"))
+
+    # make sure all the saved files are present
+    if len(savePaths) == (len(times) // 50):
+        # read in all the files, combine, and save
+
+        df = pd.read_parquet(savePaths, engine="pyarrow")
+        df.to_parquet(f"{tobacPath}/cloudy_updrafts.pq")
+        
+

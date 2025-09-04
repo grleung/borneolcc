@@ -96,3 +96,21 @@ for lc in ["lc1960", "lc2019"]:
 
             except TimeoutError:
                 pass
+
+    savePaths = sorted(glob.glob(f"{outPath}/{lc}_rte/w_features_*.pq"))
+
+    # make sure all the saved files are present
+    if len(savePaths) == (len(all_paths) // 24):
+        # read in all the files, combine, and save
+
+        all_df = pd.read_parquet(savePaths, engine="pyarrow")
+
+        # use tobac tool so that frame numbering is correct
+        all_df = tobac.utils.combine_feature_dataframes([all_df])
+
+        # there shouldn't be any duplicates, but just in case
+        all_df = all_df.drop_duplicates(["frame", "x", "y", "z"])
+
+        all_df.to_parquet(f"{outPath}/{lc}_rte/w_features.pq")
+
+        print(len(all_df.time.unique()))

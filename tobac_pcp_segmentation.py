@@ -9,13 +9,13 @@ import tobac
 import glob
 
 # change this address depending on your scheduler address
-client = dd.Client("snowfall2:8786")
+client = dd.Client("solvarg:8786")
 client.upload_file("shared_model_params.py")
 
-from shared_model_params import (
-    get_rams_output,
-    combine_tobac_list,
-    save_files,
+from shared_model_params import get_rams_output, save_files
+
+client.upload_file("shared_processing.py")
+from shared_processing import (
     compute_pcp,
 )
 
@@ -28,11 +28,10 @@ params = {}
 params["method"] = "watershed"
 params["threshold"] = 0.01  # mm/hr mixing ratio
 
+for lc in ["lc2019", "lc1960"]:
+    print(lc)
 
-aero = "rte"
-for lc in ["lc1960"]:
-
-    dataPath = f"{modelPath}/{lc}/{aero}/"
+    dataPath = f"{modelPath}/{lc}/rte/"
     # list of all timesteps where lite files are found in relevant folder
 
     all_paths = [
@@ -43,7 +42,7 @@ for lc in ["lc1960"]:
 
     dxy = 150
 
-    trackPath = f"{outPath}/{lc}_{aero}/combined_cond-w_segmented_tracks.pq"
+    trackPath = f"{outPath}/{lc}_rte/cloudy_updrafts.pq"  # combined_cond-w_segmented_tracks.pq"
     tracks = pd.read_parquet(trackPath)
 
     paths = [
@@ -53,17 +52,16 @@ for lc in ["lc1960"]:
     ]
 
     print(len(paths))
+    print(paths)
 
-    savemaskPath = f"{outPath}/{lc}_{aero}/pcp_masks/"
+    savemaskPath = f"{outPath}/{lc}_rte/pcp_masks/"
 
     if not os.path.isdir(savemaskPath):
         os.mkdir(savemaskPath)
 
-    savedfPath = (
-        f"{outPath}/{lc}_{aero}/combined_cond-w-pcp_segmented_tracks.pq"
-    )
+    savedfPath = f"{outPath}/{lc}_rte/cloudy_updrafts_raining.pq"  # combined_cond-w-pcp_segmented_tracks.pq"
 
-    if True:  # not os.path.exists(savedfPath):
+    if not os.path.exists(savedfPath):
         times = [pd.to_datetime(p.split("/")[-1][4:]) for p in paths]
 
         # prep data for feeding to tobac
@@ -90,11 +88,6 @@ for lc in ["lc1960"]:
             [{"time": [t]} for t in times],
         )
 
-        ds = client.map(
-            xr.DataArray.to_iris,
-            ds,
-        )
-
         out = client.map(
             tobac.segmentation.segmentation,
             [tracks[tracks.time == t] for t in times],
@@ -110,10 +103,12 @@ for lc in ["lc1960"]:
 
         # once loop is finished, concatenate all the figures
         # then save it to a parquet file
-        pcp = combine_tobac_list(all_segments)
+        pcp = pd.concat(all_segments)
 
         tracks = tracks.set_index(["time", "cell"])
         pcp = pcp.set_index(["time", "cell"])
+
+        print(pcp.columns)
 
         tracks["pcp_ncells"] = tracks.index.map(pcp.ncells)
         tracks = tracks.reset_index()
@@ -124,8 +119,7 @@ for lc in ["lc1960"]:
         save_files(tracks, savedfPath)
 
         for m, p in zip(all_masks, paths):
-            ds = xr.DataArray.from_iris(m)
-            ds.to_netcdf(
+            m.to_netcdf(
                 f"{savemaskPath}/{p}.h5",
                 engine="h5netcdf",
                 encoding={"segmentation_mask": {"zlib": True, "complevel": 9}},

@@ -6,9 +6,10 @@ import pandas as pd
 import xarray as xr
 import tobac
 import glob
+import sys
 
 # change this address depending on your scheduler address
-client = dd.Client("snowfall2:8786")
+client = dd.Client("anvil:9999")
 client.upload_file("shared_model_params.py")
 
 from shared_model_params import get_rams_output, save_files, dx
@@ -40,26 +41,53 @@ def dask_w_segmentation(path, lc):
     tracks = pd.read_parquet(f"{outPath}/{lc}_rte/w_tracks.pq")
     tracks = tracks[tracks.time == time].reset_index(drop=True)
 
-    mask, seg = tobac.segmentation.segmentation(
-        tracks,
-        ds,
-        dxy=dxy,
-        **params,
-    )
+    if len(tracks) > 0:
 
-    mask.to_netcdf(
-        f"{savemaskPath}/{path}.h5",
-        engine="h5netcdf",
-        encoding={"segmentation_mask": {"zlib": True, "complevel": 9}},
-    )
+        mask, seg = tobac.segmentation.segmentation(
+            tracks,
+            ds,
+            dxy=dxy,
+            **params,
+        )
 
-    del ds
-    del mask
+        mask.to_netcdf(
+            f"{savemaskPath}/{path}.h5",
+            engine="h5netcdf",
+            encoding={"segmentation_mask": {"zlib": True, "complevel": 9}},
+        )
 
-    return seg
+        del ds
+        del mask
+
+        return seg
+    else:
+        return pd.DataFrame(
+            columns=[
+                "frame",
+                "idx",
+                "vdim",
+                "hdim_1",
+                "hdim_2",
+                "num",
+                "threshold_value",
+                "feature",
+                "time",
+                "timestr",
+                "z",
+                "y",
+                "x",
+                "ztn",
+                "lat",
+                "lon",
+                "cell",
+                "time_cell",
+                "lifetime",
+                "ncells",
+            ]
+        )
 
 
-for lc in ["lc1960", "lc2019"]:
+for lc in sys.argv[1:]:  # ["lc1960", "lc2019"]:
     print(lc)
     dataPath = f"{modelPath}/{lc}/rte/"
 
@@ -92,9 +120,32 @@ for lc in ["lc1960", "lc2019"]:
 
             # once loop is finished, concatenate all the figures
             # then save it to a parquet file
-            all_segments = tobac.utils.combine_feature_dataframes(
-                out,
-                renumber_features=False,
-                sort_features_by="frame",
-            )
+            all_segments = pd.concat(out)
             save_files(all_segments, savedfPath)
+
+    savePaths = sorted(glob.glob(f"{outPath}/{lc}_rte/w_segmentation_*.pq"))
+
+    # make sure all the saved files are present
+    if len(savePaths) == (len(all_paths) // 24):
+        # read in all the files, combine, and save
+
+        tracks = pd.read_parquet(f"{outPath}/{lc}_rte/w_tracks.pq")
+        tracks = tracks.drop_duplicates(["timestr", "hdim_1", "hdim_2"])
+        tracks = tracks.set_index(["timestr", "hdim_1", "hdim_2"]).sort_index()
+
+        all_df = []
+        for p in savePaths:
+            all_df.append(pd.read_parquet(p, engine="pyarrow"))
+        all_df = pd.concat(all_df)
+
+        all_df["ncells"] = all_df.ncells.fillna(0)
+
+        all_df = all_df.drop_duplicates(["timestr", "hdim_1", "hdim_2"])
+        all_df = all_df.set_index(["timestr", "hdim_1", "hdim_2"]).sort_index()
+
+        all_df["frame"] = all_df.index.map(tracks.frame)
+        all_df["feature"] = all_df.index.map(tracks.feature)
+        all_df = all_df.reset_index().dropna(subset=["frame", "feature"])
+        all_df.to_parquet(f"{outPath}/{lc}_rte/w_segmentation.pq")
+
+        print(len(all_df.time.unique()))

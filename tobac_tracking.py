@@ -22,7 +22,7 @@ params["method_linking"] = "predict"
 params["adaptive_step"] = 0.75
 params["adaptive_stop"] = 1.0
 params["d_max"] = (
-    150 * 10
+    150 * 4
 )  # this is the distance (in m) of the search radius around trackpy predictive track
 
 for lc in lcs:
@@ -54,4 +54,6 @@ for lc in lcs:
         "max"
     ) / dt.timedelta(minutes=1)
 
-    tracks.to_parquet(f"{outPath}/{lc}_rte/w_tracks.pq")
+    tracks.to_parquet(f"{outPath}/{lc}_rte/w_tracks_new.pq", engine="pyarrow")
+
+    print(len(tracks), len(tracks.cell.unique()))

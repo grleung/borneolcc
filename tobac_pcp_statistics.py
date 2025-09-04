@@ -2,29 +2,24 @@ import os
 import xarray as xr
 import numpy as np
 import pandas as pd
-import datetime as dt
 from scipy.ndimage import (
-    labeled_comprehension,
-    maximum_position,
     sum_labels,
     maximum,
     mean,
-    minimum,
 )
-import dask
 import dask.distributed as dd
+import glob
 
-client = dd.Client("snowfall2:8786")
+client = dd.Client("solvarg:8786")
 client.upload_file("shared_model_params.py")
 
+from shared_model_params import get_rams_output
 
-from shared_model_params import (
-    get_rams_output,
-    compute_cond,
+client.upload_file("shared_processing.py")
+from shared_processing import (
     compute_pcp,
-    alt,
-    dz,
 )
+
 
 dxy = 150
 
@@ -47,9 +42,7 @@ def get_masked_statistics(sub, dataPath, tobacPath):
             ],
         )
 
-        ds = ds.assign(PCPT=compute_pcp(ds))
-
-        pcp = ds.PCPT
+        pcp = compute_pcp(ds)
 
         pcp_mask = xr.open_dataset(
             f"{tobacPath}/pcp_masks/a-L-{time.strftime('%Y-%m-%d-%H%M%S')}.h5",
@@ -93,39 +86,24 @@ def get_masked_statistics(sub, dataPath, tobacPath):
 
 n = 24
 
-for lc in ["lc1960"]:
+for lc in ["lc1960", "lc2019"]:
     dataPath = f"/squall/gleung/borneolcc/{lc}/rte/"
     tobacPath = f"/squall/gleung/borneolcc-analysis/tobac/{lc}_rte/"
-    figPath = f"/squall/gleung/borneolcc-figures/tobac-testing/{lc}-rte/"
 
-    if not os.path.isdir(figPath):
-        os.mkdir(figPath)
-
-    tracks = pd.read_parquet(
-        f"{tobacPath}/combined_cond-w-pcp_segmented_tracks.pq"
-    )
+    tracks = pd.read_parquet(f"{tobacPath}/cloudy_updrafts_raining.pq")
     frames = tracks.frame.unique()
     times = tracks.time.unique()
-    if lc == "lc2019":
-        frames = frames[times >= pd.to_datetime("2019-09-19 19:00")]
-    elif lc == "lc1960":
-        frames = frames[times >= pd.to_datetime("2019-09-18 18:00")]
 
-    for i, frames in enumerate(
+    for i, frames_ in enumerate(
         np.array_split(sorted(frames), len(frames) // n)
     ):
-        print(lc, i)
-        if lc == "lc2019":
-            i = i + 28
-        elif lc == "lc1960":
-            i = i + 29
 
         if not os.path.exists(
-            f"{tobacPath}/pcp_statistics_{str(i).zfill(2)}.pq"
+            f"{tobacPath}/raining_cloudy_updraft_statistics_{str(i).zfill(2)}.pq"
         ):
             x = client.map(
                 get_masked_statistics,
-                [tracks[tracks.frame == frame] for frame in frames],
+                [tracks[tracks.frame == frame] for frame in frames_],
                 dataPath=dataPath,
                 tobacPath=tobacPath,
             )
@@ -133,4 +111,25 @@ for lc in ["lc1960"]:
 
             x = pd.concat(x)
 
-            x.to_parquet(f"{tobacPath}/pcp_statistics_{str(i).zfill(2)}.pq")
+            x.to_parquet(
+                f"{tobacPath}/raining_cloudy_updraft_statistics_{str(i).zfill(2)}.pq"
+            )
+
+    savePaths = sorted(
+        glob.glob(f"{tobacPath}/raining_cloudy_updraft_statistics_*.pq")
+    )
+    print(len(savePaths))
+    print(len(frames) // 24)
+
+    # make sure all the saved files are present
+    if len(savePaths) == (len(frames) // n):
+        # read in all the files, combine, and save
+
+        all_df = []
+        for p in savePaths:
+            all_df.append(pd.read_parquet(p, engine="pyarrow"))
+        all_df = pd.concat(all_df)
+
+        all_df.to_parquet(f"{tobacPath}/raining_cloudy_updraft_statistics.pq")
+
+        print(len(all_df.time.unique()))
