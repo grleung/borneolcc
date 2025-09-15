@@ -23,7 +23,7 @@ style = "/home/gleung/scripts/styles/bee-paperlight.mplstyle"
 bg = "white"
 lcol = "black"
 
-# style = "/home/gleung/scripts/styles/bee-presentationtransparentdark.mplstyle"
+#style = "/home/gleung/scripts/styles/bee-presentationtransparentlight.mplstyle"
 # bg = "#2E3745"
 # lcol = "white"
 plt.style.use(style)

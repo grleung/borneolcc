@@ -1,6 +1,6 @@
 """
 This script takes RAMS output and creates a hdf5 file (.h5) that contains the
-mean thermodynamic profile for the near-surface air and canopy air over land points only,
+mean thermodynamic variables for the near-surface air and canopy air over land points only,
 as an average over the local time diurnal cycle (over the three simulation days). By default,
 the time resolution is 30mins. There is one hdf5 file per run, which are saved under
  '/squall/gleung/borneolcc-analysis/paper-analysis/nearsurf-thermo-diurnal-[run].h5'

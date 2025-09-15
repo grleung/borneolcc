@@ -4,6 +4,23 @@ import xarray as xr
 from shared_model_params import assign_dz, lv, cp, p00, rd
 
 
+def compute_pcp(ds):
+    ds = ds.assign(
+        PCPTOT=3600
+        * (
+            ds.PCPRR
+            + ds.PCPRP
+            + ds.PCPRS
+            + ds.PCPRA
+            + ds.PCPRG
+            + ds.PCPRH
+            + ds.PCPRD
+        )
+    )
+    ds = ds["PCPTOT"]
+    return ds
+
+
 def compute_cond(
     ds: xr.Dataset, return_dens: bool = False, cloud: bool = True
 ) -> xr.Dataset:
@@ -117,7 +134,7 @@ def find_paths_in_time_range(
     return paths.path.values
 
 
-def get_land_mean(ds: xr.Dataset, landmask: xr.Dataset) -> xr.Dataset:
+def get_land_mean(ds: xr.Dataset, landmask: xr.Dataset, profile=False) -> xr.Dataset:
     """
     Given a RAMS array, takes the mean value among land points only
 
@@ -129,7 +146,10 @@ def get_land_mean(ds: xr.Dataset, landmask: xr.Dataset) -> xr.Dataset:
         Dataset of mean values among land grid points only
     """
     ds = ds * landmask
-    return ds.sum() / landmask.sum()
+    if profile:
+        return ds.sum(dim=('x','y')) / landmask.sum()
+    else:
+        return ds.sum() / landmask.sum()
 
 
 def compute_seb(ds: xr.Dataset) -> xr.Dataset:
@@ -288,12 +308,72 @@ forest_loss = ((pres_lc.lc == 7) / (pres_lc.lc != 0)) - (
 )
 
 
-def smooth_data_plotting(data, coarseres, rollres, min_periods=1):
+def smooth_data_plotting(
+    data, coarseres, rollres, coarseagg="mean", min_periods=1
+):
     data = (
         data.coarsen(x=coarseres, y=coarseres, boundary="pad")
-        .mean()
-        .rolling(x=rollres, y=rollres, min_periods=min_periods)
+        .reduce(coarseagg)
+        .rolling(x=rollres, y=rollres, min_periods=min_periods, center=True)
         .mean()
     )
 
     return data
+
+def rolling_cycle(d, window=3):
+    return (
+        pd.Series(
+            np.concatenate([d[-int(window / 2) :], d, d[: int(window / 2)]])
+        )
+        .rolling(window, center=True)
+        .mean()
+        .dropna()
+        .values
+    )
+
+def compute_thermo_prof(ds, zslice=slice(1, 35)):
+    """
+    Computes temperature, dewpoint, and pressure for nearsurface profile
+    for given RAMS file
+
+    Arguments:
+        ds -- RAMS output with variables [THETA,PI,RV]
+
+    Returns:
+        xarray of temp, dewpoint, pressure at given profile levels
+    """
+    from shared_model_params import cp, rd, p00
+    import metpy.calc as mpcalc
+    import metpy.units as units
+
+    # select only the z levels specified
+    ds = ds.sel(z=zslice)
+
+    # calculations of pressure (hPa), temp (degC)
+    ds = ds.assign(
+        {
+            "PRES": (p00 * (ds.PI / cp) ** (cp / rd)) / 100,
+            "TEMP": ds.THETA * (ds.PI / cp) - 273.15,
+        }
+    )
+
+    ds = ds.assign(
+        Td=(
+            ("z","y", "x"),
+            mpcalc.dewpoint_from_specific_humidity(
+                ds.PRES.values * units.units("hPa"),
+                ds.TEMP.values * units.units("degC"),
+                ds.RV.values * units.units("kg/kg"),
+            ).magnitude,
+        )
+    )  # dewpoint in degC
+
+
+    return(ds[['TEMP','PRES','Td']])
+
+
+
+
+
+
+    

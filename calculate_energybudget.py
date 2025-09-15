@@ -15,7 +15,11 @@ import dask.distributed as dd
 client = dd.Client("snowfall2:8786")  # my dask scheduler
 
 client.upload_file("shared_model_params.py")
-from shared_model_params import get_rams_output, landmask, remove_boundaries
+from shared_model_params import (
+    get_rams_output,
+    landmask,
+    remove_boundaries,
+)
 
 client.upload_file("shared_processing.py")
 from shared_processing import (
