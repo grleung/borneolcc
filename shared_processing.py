@@ -178,9 +178,9 @@ def compute_seb(ds: xr.Dataset) -> xr.Dataset:
     ds = ds.assign(
         {
             "lwdn": ds.LWDN.sel(z=1),  # downwelling longwave
-            "lwup": ds.LWUP.sel(z=1),  # upwelling longwave
+            "lwup": -ds.LWUP.sel(z=1),  # upwelling longwave
             "swdn": ds.SWDN.sel(z=1),  # downwelling shortwave
-            "swup": ds.SWUP.sel(z=1),  # upwelling shortwave
+            "swup": -ds.SWUP.sel(z=1),  # upwelling shortwave
         }
     )
 
@@ -193,7 +193,9 @@ def compute_seb(ds: xr.Dataset) -> xr.Dataset:
 
     ds = ds.assign(g=-(ds.swnet + ds.lwnet + ds.shf + ds.lhf))  # heat storage
 
-    return ds[["lhf", "shf", "lwnet", "swnet", "g"]]
+    return ds[["lhf", "shf", "g",
+                "lwup", "lwdn", "lwnet",
+                "swup", "swdn", "swnet"]]
 
 
 def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
@@ -211,7 +213,7 @@ def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
     import metpy.calc as mpcalc
     import metpy.units as units
 
-    ds = ds.sel(z=1, p=1)
+    ds = ds.sel(z=2, p=1)
 
     ds = ds.assign(
         {
@@ -267,7 +269,7 @@ def compute_surf_pert(
     """
     from shared_model_params import lv, cp
 
-    ds = ds.sel(z=1)
+    ds = ds.sel(z=2)
 
     # only need land points where altitude < 500m ASL
     ds = ds.where(landmask).where(topo <= 500)

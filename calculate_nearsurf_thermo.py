@@ -12,7 +12,7 @@ import pandas as pd
 import xarray as xr
 import dask.distributed as dd
 
-client = dd.Client("snowfall3:8786")  # my dask scheduler
+client = dd.Client("snowfall2:8786")  # my dask scheduler
 
 client.upload_file("shared_model_params.py")
 from shared_model_params import get_rams_output, landmask, remove_boundaries
@@ -67,6 +67,6 @@ for run in runs:
     out = xr.concat(out, dim=pd.Series(times, name="hour_day"))
 
     out.to_netcdf(
-        f"/squall/gleung/borneolcc-analysis/paper-analysis/nearsurf-thermo-diurnal-{run}.h5",
+        f"/squall/gleung/borneolcc-analysis/paper-analysis/nearsurf-75-thermo-diurnal-{run}.h5",
         engine="h5netcdf",
     )

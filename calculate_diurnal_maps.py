@@ -65,6 +65,6 @@ for run in runs:
     out = xr.concat(out, dim=pd.Series(times, name="hour_day"))
 
     out.to_netcdf(
-        f"/squall/gleung/borneolcc-analysis/paper-analysis/maps-diurnal-{run}.h5",
+        f"/squall/gleung/borneolcc-analysis/paper-analysis/maps-diurnal-nearsurf75-{run}.h5",
         engine="h5netcdf",
     )
