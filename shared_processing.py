@@ -304,7 +304,7 @@ pres_lc = get_rams_landcover(
 )
 pres_lc = remove_boundaries(pres_lc, bxy=bxy)
 
-
+# define the deforested pixel as anywhere that was forest in past but not forest in present (and set oceans to nan)
 forest_loss = ((pres_lc.lc == 7) / (pres_lc.lc != 0)) - (
     (past_lc.lc == 7) / (past_lc.lc != 0)
 )
@@ -374,8 +374,89 @@ def compute_thermo_prof(ds, zslice=slice(1, 35)):
     return(ds[['TEMP','PRES','Td']])
 
 
+def compute_rad_prof(ds, zslice=slice(1, 80)):
+    """
+    Computes radiation profile for given RAMS file
+
+    Arguments:
+        ds -- RAMS output with variables "LWUP", "LWDN",'SWUP','SWDN','FTHRD','FTHRDLW','FTHRDSW'
+
+    Returns:
+        xarray of temp, dewpoint, pressure at given profile levels
+    """
+    # select only the z levels specified
+    ds = ds.sel(z=zslice).where(topo <= 500)
+
+    ds = ds.assign(LWNET = ds.LWDN - ds.LWUP)
+    ds = ds.assign(SWNET = ds.SWDN - ds.SWUP)
+
+    return(ds[["LWUP", "LWDN","LWNET",
+               'SWUP','SWDN','SWNET',
+               'FTHRD','FTHRDLW','FTHRDSW']])
 
 
 
+def compute_ll_moistureconv(ds, landmask,topo,zslice=slice(1,17)):
+    """
+    Calculates the low level moisture convergence integrated vertically over selected levels.
+    By default, integrates from the first model level above the surface to level 17 ~ 0-1km.
 
-    
+    """
+    from shared_model_params import alt, dz, dx
+
+    # only need land points
+    ds = ds.where(landmask)
+
+    # assign altitude and dz coordinates in m
+    ds = ds.assign_coords(alt=("z", alt / 1000))
+    ds = ds.assign_coords(dz=("z", dz))
+
+    # select only the z levels specified
+    ds = ds.sel(z=zslice)
+
+    # preliminary calculations of pressure (hPa), temp (K), and density (kg/m3)
+    ds = ds.assign(
+        {
+            "PRES": (p00 * (ds.PI / cp) ** (cp / rd)) / 100,
+            "TEMP": ds.THETA * (ds.PI / cp),
+        }
+    )
+    ds = ds.assign(DENS=(100 * ds.PRES) / (rd * ds.TEMP * (1 + (0.61 * ds.RV))))
+
+    # calculate advective contribution to vertical integral of moisture flux convergence
+    # vertical integral of (-U * d(r*rho)/dx - V* d(r*rho)/dy),
+    # where r/RV is mixing ratio of vapor
+    # note dx and dy are equal in our simulation so we just use dx here
+    # also note that MFC is typically in units of kg kg^(-1) s^(-1) but we are integrating
+    # vertically so we also weight by density; this means we get something with final units
+    # kg m^(-2) s^(-1)
+    ds = ds.assign(
+        MFC_adv=-(
+            (
+                (ds.UP * ((ds.RV * ds.DENS).differentiate("x") / dx))
+                + (ds.VP * ((ds.RV * ds.DENS).differentiate("y") / dx))
+            )
+            * ds.dz
+        ).sum(dim="z")
+    )
+
+    # calculate convergent contribution to vertical integral of moisture flux convergence:
+    # vertical integral of (-r*rho * dU/dx - r*rho*dV/dy )
+    ds = ds.assign(
+        MFC_conv=-(
+            (
+                (ds.RV * ds.DENS * (ds.UP.differentiate("x") / dx))
+                + (ds.RV * ds.DENS * (ds.VP.differentiate("y") / dx))
+            )
+            * ds.dz
+        ).sum(dim="z")
+    )
+    ds = ds.assign(MFC=ds.MFC_adv + ds.MFC_conv)
+
+    ds = ds.assign(MFC_pert=ds.MFC - (ds.MFC.mean(dim=("x", "y"))))
+
+    # local moisture flux from surface layer (this tells us what local moisture is vs what moisture is
+    # being transported horizontally)
+    ds = ds.assign(SFLUX_R_pert=ds.SFLUX_R - (ds.SFLUX_R.mean(dim=("x", "y"))))
+
+    return ds[['MCF','MFC_adv','MFC_conv','MFC_pert','SFLUX_R','SFLUX_R_pert']]
