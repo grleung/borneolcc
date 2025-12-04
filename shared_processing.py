@@ -186,8 +186,8 @@ def compute_seb(ds: xr.Dataset) -> xr.Dataset:
 
     ds = ds.assign(
         {
-            "swnet": ds.swdn - ds.swup,  # net shortwave
-            "lwnet": ds.lwdn - ds.lwup,  # net longwave
+            "swnet": ds.swdn +ds.swup,  # net shortwave
+            "lwnet": ds.lwdn + ds.lwup,  # net longwave
         }
     )
 
@@ -198,13 +198,88 @@ def compute_seb(ds: xr.Dataset) -> xr.Dataset:
                 "swup", "swdn", "swnet"]]
 
 
+
+
+def calculate_soil_temp(soil_energy, soil_water, soil_heatcap):
+    # calculate soil temp in degC (from REVU)
+    if soil_energy <= 0:
+        return soil_energy / ((2.093e6 * soil_water) + soil_heatcap)
+    elif soil_energy >= soil_water * 3.34e8:
+        return (soil_energy - (soil_water * 3.34e8)) / (
+            (4.186e6 * soil_water) + soil_heatcap
+        )
+    else:
+        return 0
+
+
+calculate_soil_temp = np.vectorize(calculate_soil_temp)
+
+from shared_model_params import get_rams_output, rams_dims_anal, remove_boundaries, bxy
+# read in the soil textures
+soil_text = get_rams_output(
+    f"/squall/gleung/borneolcc/lc1960/rte/a-A-2019-09-16-140000-g1.h5",
+    variables=["GLON", "GLAT", "SOIL_TEXT"],
+    dims=rams_dims_anal,
+)[["GLON", "GLAT", "SOIL_TEXT"]]
+soil_text = remove_boundaries(soil_text, bxy=bxy)
+
+# Soil parameters
+soil_sat = np.array(
+    [
+        0.395,
+        0.410,
+        0.435,
+        0.485,
+        0.451,
+        0.420,
+        0.477,
+        0.476,
+        0.426,
+        0.492,
+        0.482,
+        0.863,
+    ]
+)
+
+
+soil_heatcap = np.array(
+    [
+        1465e3,
+        1407e3,
+        1344e3,
+        1273e3,
+        1214e3,
+        1177e3,
+        1319e3,
+        1227e3,
+        1177e3,
+        1151e3,
+        1088e3,
+        874e3,
+    ]
+)
+
+
+def get_soil_sat(i):
+    return soil_sat[i - 1]
+
+
+def get_soil_heatcap(i):
+    return soil_heatcap[i - 1]
+
+
+def assign_soil_heatcap(ds):
+    # assigns soil dry heat capacity based on soil type
+    return get_soil_heatcap(ds.SOIL_TEXT.values.astype(int))
+
+
 def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
     """
     Computes temperature and dewpoints at nearest model level to the surface
     and at the canopy height for given RAMS file
 
     Arguments:
-        ds -- RAMS output with variables [THETA,PI,RV, CAN_TEMP,CAN_RVAP]
+        ds -- RAMS output with variables [THETA,PI,RV, CAN_TEMP,CAN_RVAP, VEG_TEMP, SOIL_ENERGY, SOIL_WATER]
 
     Returns:
         xarray of temp and dewpoint at near-surface atmosphere and canopy
@@ -213,7 +288,12 @@ def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
     import metpy.calc as mpcalc
     import metpy.units as units
 
-    ds = ds.sel(z=2, p=1)
+    
+    # read in the soil textures
+    soil_cp = assign_soil_heatcap(soil_text)
+
+    
+    ds = ds.sel(z=2, p=1, g=10)
 
     ds = ds.assign(
         {
@@ -249,7 +329,12 @@ def compute_canopy_nearsurf(ds: xr.Dataset) -> xr.Dataset:
 
     ds = ds.assign(CAN_RV=ds.CAN_RVAP)
 
-    return ds[["AIR_T", "AIR_Td", "AIR_RV", "CAN_T", "CAN_Td", "CAN_RV"]]
+    ds = ds.assign(VEG_T = ds.VEG_TEMP)
+
+    ds = ds.assign(SOIL_HEATCAP = (('y','x'),soil_cp[1,10,:,:]))
+    ds = ds.assign(SOIL_T = (('y','x'),calculate_soil_temp(ds.SOIL_ENERGY, ds.SOIL_WATER, ds.SOIL_HEATCAP)))
+
+    return ds[["AIR_T", "AIR_Td", "AIR_RV", "CAN_T", "CAN_Td", "CAN_RV", "VEG_T", "SOIL_T",'VEG_WATER','SOIL_WATER']]
 
 
 def compute_surf_pert(
@@ -374,7 +459,7 @@ def compute_thermo_prof(ds, zslice=slice(1, 35)):
     return(ds[['TEMP','PRES','Td']])
 
 
-def compute_rad_prof(ds, zslice=slice(1, 80)):
+def compute_rad_prof(ds, zslice=slice(1, 70,2)):
     """
     Computes radiation profile for given RAMS file
 
@@ -385,7 +470,7 @@ def compute_rad_prof(ds, zslice=slice(1, 80)):
         xarray of temp, dewpoint, pressure at given profile levels
     """
     # select only the z levels specified
-    ds = ds.sel(z=zslice).where(topo <= 500)
+    ds = ds.sel(z=zslice)
 
     ds = ds.assign(LWNET = ds.LWDN - ds.LWUP)
     ds = ds.assign(SWNET = ds.SWDN - ds.SWUP)
@@ -459,4 +544,4 @@ def compute_ll_moistureconv(ds, landmask,topo,zslice=slice(1,17)):
     # being transported horizontally)
     ds = ds.assign(SFLUX_R_pert=ds.SFLUX_R - (ds.SFLUX_R.mean(dim=("x", "y"))))
 
-    return ds[['MCF','MFC_adv','MFC_conv','MFC_pert','SFLUX_R','SFLUX_R_pert']]
+    return ds[['MFC','MFC_adv','MFC_conv','MFC_pert','SFLUX_R','SFLUX_R_pert']]
