@@ -62,6 +62,8 @@ for run in runs:
         # assign that mean to the output xarray
         out.append(xr.concat(ds, dim="time").mean(dim=("time")))
         
+    out = xr.concat(out, dim='time')
+    
     out = out.compute()
 
     out.to_netcdf(
