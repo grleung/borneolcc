@@ -9,7 +9,7 @@ import pandas as pd
 import xarray as xr
 import dask.distributed as dd
 
-client = dd.Client("snowfall1:8786")  # my dask scheduler
+client = dd.Client("snowfall2:8786")  # my dask scheduler
 
 client.upload_file("shared_model_params.py")
 from shared_model_params import (
@@ -29,7 +29,7 @@ from shared_processing import (
 topo = topo.TOPT.compute()
 landmask = landmask.compute()
 
-runs = ["lc1960", "lc2019"]
+runs = [ "lc2019"]
 
 time_resolution = 0.5  # time resolution in hours (30mins)
 times = [6,7,8, 9, 10, 11, 12, 13,14,15,16,17,18,19]
@@ -47,7 +47,7 @@ for run in runs:
         ds = client.map(
             get_rams_output,
             paths,
-            variables=["RV", "UP", "VP", "PI", "THETA", "RV"],
+            variables=["SFLUX_R","RV", "UP", "VP", "PI", "THETA", "RV"],
         )
 
         # exclude points near boundaries
